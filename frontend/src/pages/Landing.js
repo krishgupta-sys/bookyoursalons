@@ -5,7 +5,7 @@ import { auth, googleProvider } from '../firebase';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Scissors, Sparkles, Lock } from 'lucide-react';
+import { Scissors, Sparkles, Lock, CheckCircle, Star, Users, Shield, Clock, MapPin, Zap, Gift, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import Logo from '../components/Logo';
 import axios from 'axios';
@@ -25,6 +25,21 @@ function Landing() {
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+  const [discountInfo, setDiscountInfo] = useState(null);
+  const API = process.env.REACT_APP_BACKEND_URL;
+
+  // Fetch discount eligibility for offer banner
+  useEffect(() => {
+    const fetchDiscountInfo = async () => {
+      try {
+        const response = await axios.get(`${API}/salon/discount-eligibility`);
+        setDiscountInfo(response.data);
+      } catch (error) {
+        console.log('Discount info not available');
+      }
+    };
+    fetchDiscountInfo();
+  }, [API]);
 
   // Cleanup reCAPTCHA on unmount
   useEffect(() => {
@@ -296,14 +311,87 @@ function Landing() {
       </div>
       
       <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-12 pt-16 sm:pt-20">
-        <div className="text-center mb-8 sm:mb-16">
+        {/* OFFER BANNER - 50% OFF for First 100 Salons */}
+        {discountInfo?.eligible && (
+          <div className="mb-6 sm:mb-8 animate-pulse" data-testid="offer-banner">
+            <div className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 rounded-2xl p-4 sm:p-6 text-white shadow-2xl">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/20 p-3 rounded-full">
+                    <Gift className="w-8 h-8 text-yellow-300" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded animate-bounce">LIMITED TIME</span>
+                      <span className="text-2xl sm:text-3xl font-black">50% OFF</span>
+                    </div>
+                    <p className="text-white/90 font-medium">For First 100 Salon Partners</p>
+                    <p className="text-yellow-200 text-sm font-semibold">
+                      ⏰ Only {discountInfo.slotsRemaining || 0} slots left!
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => {
+                    setSelectedRole('salon');
+                    setShowAuth(true);
+                  }}
+                  className="bg-white text-red-600 hover:bg-yellow-100 font-bold px-6 py-3 text-lg shadow-lg"
+                >
+                  Claim Offer <ArrowRight className="w-5 h-5 ml-2" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HERO SECTION */}
+        <div className="text-center mb-8 sm:mb-12">
           <div className="flex items-center justify-center mb-4">
             <Logo size="large" className="scale-90 sm:scale-100" />
           </div>
-          <p className="text-base sm:text-xl text-gray-600 max-w-2xl mx-auto px-2">
-            Discover and book the best salons near you
+          <h1 className="text-3xl sm:text-5xl font-black text-gray-900 mb-4">
+            Book Trusted Salons Near You <span className="inline-block">✂️</span>
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto px-2 mb-6">
+            Instant booking • Verified salons • Best prices
           </p>
+          
+          {!showAuth && (
+            <Button 
+              size="lg"
+              onClick={() => {
+                setSelectedRole('customer');
+                setShowAuth(true);
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white px-8 py-6 text-lg font-bold rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105"
+              data-testid="hero-book-now-btn"
+            >
+              <Zap className="w-5 h-5 mr-2" />
+              Book Now
+            </Button>
+          )}
         </div>
+
+        {/* TRUST SECTION */}
+        {!showAuth && (
+          <div className="mb-10 sm:mb-16">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+              <div className="flex items-center justify-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+                <span className="font-semibold text-green-800">Verified Salons</span>
+              </div>
+              <div className="flex items-center justify-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <Clock className="w-6 h-6 text-blue-600" />
+                <span className="font-semibold text-blue-800">Easy Booking</span>
+              </div>
+              <div className="flex items-center justify-center gap-3 bg-purple-50 border border-purple-200 rounded-xl p-4">
+                <Shield className="w-6 h-6 text-purple-600" />
+                <span className="font-semibold text-purple-800">No Hidden Charges</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!showAuth ? (
           <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
@@ -344,12 +432,18 @@ function Landing() {
 
             <Card 
               data-testid="salon-partner-card" 
-              className="cursor-pointer hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500"
+              className="cursor-pointer hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500 relative overflow-hidden"
               onClick={() => {
                 setSelectedRole('salon');
                 setShowAuth(true);
               }}
             >
+              {/* Discount Badge */}
+              {discountInfo?.eligible && (
+                <div className="absolute top-0 right-0 bg-gradient-to-l from-orange-500 to-red-500 text-white text-xs font-bold px-4 py-1 rounded-bl-lg">
+                  🔥 50% OFF
+                </div>
+              )}
               <CardHeader className="text-center pb-4 sm:pb-8">
                 <div className="mx-auto bg-purple-100 w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mb-3 sm:mb-4">
                   <Scissors className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600" />
@@ -358,6 +452,12 @@ function Landing() {
                 <CardDescription className="text-sm sm:text-base mt-2 sm:mt-3">
                   Grow your business with our platform
                 </CardDescription>
+                {discountInfo?.eligible && (
+                  <div className="mt-3 inline-flex items-center gap-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">
+                    <Gift className="w-4 h-4" />
+                    1 Month FREE + 50% OFF
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2 sm:space-y-3 text-gray-600 text-sm sm:text-base">
@@ -547,6 +647,32 @@ function Landing() {
                 </Button>
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* STATS SECTION */}
+        {!showAuth && (
+          <div className="mt-12 sm:mt-16 py-8 sm:py-12 bg-gray-50 rounded-2xl">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-4xl mx-auto text-center">
+              <div>
+                <div className="text-3xl sm:text-4xl font-black text-red-600 mb-1">500+</div>
+                <div className="text-gray-600 text-sm sm:text-base">Happy Customers</div>
+              </div>
+              <div>
+                <div className="text-3xl sm:text-4xl font-black text-purple-600 mb-1">50+</div>
+                <div className="text-gray-600 text-sm sm:text-base">Partner Salons</div>
+              </div>
+              <div>
+                <div className="text-3xl sm:text-4xl font-black text-green-600 mb-1">4.8</div>
+                <div className="text-gray-600 text-sm sm:text-base flex items-center justify-center gap-1">
+                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" /> Rating
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl sm:text-4xl font-black text-blue-600 mb-1">24/7</div>
+                <div className="text-gray-600 text-sm sm:text-base">Support</div>
+              </div>
+            </div>
           </div>
         )}
       </div>

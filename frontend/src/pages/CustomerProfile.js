@@ -3,34 +3,71 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { User, Phone, Calendar, Star, Heart, Clock, ArrowLeft, LogOut, Award } from 'lucide-react';
+import { Input } from '../components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { User, Phone, Calendar, Star, Heart, Clock, ArrowLeft, LogOut, Award, Pencil, MapPin, Mail, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import Logo from '../components/Logo';
 
 
-const API = '/api';
+const API = process.env.REACT_APP_BACKEND_URL || '/api';
 
 function CustomerProfile() {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   
-  const userName = localStorage.getItem('userName') || 'Customer';
-  const userPhone = localStorage.getItem('userPhone') || '';
-  const userEmail = localStorage.getItem('userEmail') || '';
+  const [userName, setUserName] = useState(localStorage.getItem('userName') || 'Customer');
+  const [userPhone, setUserPhone] = useState(localStorage.getItem('userPhone') || '');
+  const [userEmail, setUserEmail] = useState(localStorage.getItem('userEmail') || '');
+  const [userAddress, setUserAddress] = useState(localStorage.getItem('userAddress') || '');
+  
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    name: '',
+    address: '',
+    email: ''
+  });
 
   useEffect(() => {
     fetchUserData();
+    fetchUserProfile();
   }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      if (userPhone) {
+        const response = await axios.get(`${API}/user/profile/${encodeURIComponent(userPhone)}`);
+        if (response.data) {
+          if (response.data.name) {
+            setUserName(response.data.name);
+            localStorage.setItem('userName', response.data.name);
+          }
+          if (response.data.address) {
+            setUserAddress(response.data.address);
+            localStorage.setItem('userAddress', response.data.address);
+          }
+          if (response.data.email) {
+            setUserEmail(response.data.email);
+            localStorage.setItem('userEmail', response.data.email);
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Profile fetch error:', error);
+    }
+  };
 
   const fetchUserData = async () => {
     setLoading(true);
     try {
       // Fetch bookings
       if (userPhone) {
-        const bookingsRes = await axios.get(`${API}/bookings/customer/${userPhone}`);
+        const bookingsRes = await axios.get(`${API}/bookings/customer/${encodeURIComponent(userPhone)}`);
         const bookingsData = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
         setBookings(bookingsData);
         
@@ -53,6 +90,46 @@ function CustomerProfile() {
       console.error('Error fetching user data:', error);
     }
     setLoading(false);
+  };
+
+  const openEditDialog = () => {
+    setEditForm({
+      name: userName || '',
+      address: userAddress || '',
+      email: userEmail || ''
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const response = await axios.put(`${API}/user/update-profile`, {
+        phone: userPhone,
+        firebase_uid: localStorage.getItem('firebaseUid'),
+        name: editForm.name,
+        address: editForm.address,
+        email: editForm.email
+      });
+
+      if (response.data) {
+        // Update local state and localStorage
+        setUserName(editForm.name);
+        setUserAddress(editForm.address);
+        setUserEmail(editForm.email);
+        
+        localStorage.setItem('userName', editForm.name);
+        localStorage.setItem('userAddress', editForm.address);
+        localStorage.setItem('userEmail', editForm.email);
+        
+        toast.success('Profile updated successfully ✅');
+        setShowEditDialog(false);
+      }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      toast.error(error.response?.data?.error || 'Failed to update profile');
+    }
+    setSaving(false);
   };
 
   const handleLogout = () => {
@@ -94,25 +171,49 @@ function CustomerProfile() {
       </div>
 
       <div className="container mx-auto px-4 py-6 max-w-lg">
-        {/* Profile Card */}
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-orange-400 rounded-full flex items-center justify-center">
-                <User className="w-8 h-8 text-white" />
+        {/* Profile Card with Edit Button */}
+        <Card className="mb-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-20 bg-gradient-to-r from-red-500 to-orange-500"></div>
+          <CardContent className="pt-12 relative">
+            <div className="flex items-end gap-4">
+              <div className="w-20 h-20 bg-white rounded-full border-4 border-white shadow-lg flex items-center justify-center -mt-10">
+                <User className="w-10 h-10 text-red-500" />
               </div>
-              <div className="flex-1">
-                <h2 className="text-xl font-bold text-gray-800">{userName}</h2>
+              <div className="flex-1 pb-2">
+                <h2 className="text-xl font-bold text-gray-800">{userName || 'Customer'}</h2>
                 {userPhone && (
                   <div className="flex items-center gap-1 text-gray-600 text-sm">
                     <Phone className="w-3 h-3" />
-                    <span>+91 {userPhone}</span>
+                    <span>{userPhone}</span>
                   </div>
                 )}
-                {userEmail && (
-                  <p className="text-gray-500 text-sm">{userEmail}</p>
-                )}
               </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={openEditDialog}
+                className="mb-2"
+                data-testid="edit-profile-btn"
+              >
+                <Pencil className="w-4 h-4 mr-1" />
+                Edit
+              </Button>
+            </div>
+            
+            {/* Additional Info */}
+            <div className="mt-4 space-y-2">
+              {userEmail && (
+                <div className="flex items-center gap-2 text-gray-600 text-sm">
+                  <Mail className="w-4 h-4 text-gray-400" />
+                  <span>{userEmail}</span>
+                </div>
+              )}
+              {userAddress && (
+                <div className="flex items-center gap-2 text-gray-600 text-sm">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  <span>{userAddress}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -178,7 +279,7 @@ function CustomerProfile() {
                       <p className="font-medium text-gray-800">{booking.salon_name || 'Salon'}</p>
                       <p className="text-sm text-gray-600">{booking.service_name}</p>
                       <p className="text-xs text-gray-500">
-                        {booking.booking_date} at {booking.booking_time}
+                        {booking.booking_date} at {booking.slot_time || booking.booking_time}
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded ${
@@ -251,6 +352,110 @@ function CustomerProfile() {
           </Button>
         </div>
       </div>
+
+      {/* EDIT PROFILE DIALOG */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="bg-red-100 p-2 rounded-lg">
+                <Pencil className="w-5 h-5 text-red-600" />
+              </div>
+              Edit Profile
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Name Field */}
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">
+                <User className="w-4 h-4 inline mr-1" />
+                Name
+              </label>
+              <Input
+                data-testid="edit-name-input"
+                value={editForm.name}
+                onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                placeholder="Enter your name"
+                className="border-gray-300 focus:border-red-500"
+              />
+            </div>
+
+            {/* Phone Field (Read-only) */}
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">
+                <Phone className="w-4 h-4 inline mr-1" />
+                Phone Number
+              </label>
+              <Input
+                value={userPhone}
+                disabled
+                className="bg-gray-100 text-gray-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Phone number cannot be changed</p>
+            </div>
+
+            {/* Email Field */}
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">
+                <Mail className="w-4 h-4 inline mr-1" />
+                Email (Optional)
+              </label>
+              <Input
+                type="email"
+                data-testid="edit-email-input"
+                value={editForm.email}
+                onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                placeholder="Enter your email"
+                className="border-gray-300 focus:border-red-500"
+              />
+            </div>
+
+            {/* Address Field */}
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">
+                <MapPin className="w-4 h-4 inline mr-1" />
+                Address (Optional)
+              </label>
+              <Input
+                data-testid="edit-address-input"
+                value={editForm.address}
+                onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                placeholder="Enter your address"
+                className="border-gray-300 focus:border-red-500"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-4 border-t">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowEditDialog(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSaveProfile}
+                className="flex-1 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+                disabled={saving}
+                data-testid="save-profile-btn"
+              >
+                {saving ? (
+                  <span className="flex items-center gap-2">
+                    <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                    Saving...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Check className="w-5 h-5" />
+                    Save Changes
+                  </span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

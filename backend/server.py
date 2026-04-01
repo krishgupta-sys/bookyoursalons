@@ -1183,3 +1183,71 @@ async def update_salon_profile(request: Request):
         "salon": serialize_doc(updated_salon)
     }
 
+
+# ==================== FEATURE: CUSTOMER PROFILE EDIT ====================
+
+@app.put("/api/user/update-profile")
+async def update_user_profile(request: Request):
+    """Update customer profile with partial update support"""
+    data = await request.json()
+    phone = data.get("phone")
+    firebase_uid = data.get("firebase_uid")
+    
+    if not phone and not firebase_uid:
+        raise HTTPException(400, "phone or firebase_uid is required")
+    
+    # Find user by phone or firebase_uid
+    query = {}
+    if phone:
+        query["phone"] = phone
+    elif firebase_uid:
+        query["firebase_uid"] = firebase_uid
+    
+    existing_user = db.users.find_one(query)
+    if not existing_user:
+        # Create new user if doesn't exist
+        new_user = {
+            "phone": phone or "",
+            "firebase_uid": firebase_uid or "",
+            "name": data.get("name", ""),
+            "address": data.get("address", ""),
+            "created_at": datetime.now(),
+            "updated_at": datetime.now()
+        }
+        db.users.insert_one(new_user)
+        return {"message": "Profile created successfully", "user": serialize_doc(new_user)}
+    
+    # Build partial update - only update provided fields
+    update_data = {}
+    
+    if data.get("name") is not None:
+        update_data["name"] = data["name"]
+    if data.get("address") is not None:
+        update_data["address"] = data["address"]
+    if data.get("email") is not None:
+        update_data["email"] = data["email"]
+    if data.get("gender") is not None:
+        update_data["gender"] = data["gender"]
+    
+    # Add updated timestamp
+    update_data["updated_at"] = datetime.now()
+    
+    # Perform partial update
+    db.users.update_one(query, {"$set": update_data})
+    
+    # Fetch and return updated user
+    updated_user = db.users.find_one(query, {"_id": 0})
+    
+    return {
+        "message": "Profile updated successfully",
+        "user": serialize_doc(updated_user)
+    }
+
+@app.get("/api/user/profile/{phone}")
+async def get_user_profile(phone: str):
+    """Get customer profile by phone"""
+    user = db.users.find_one({"phone": phone}, {"_id": 0})
+    if not user:
+        return {"phone": phone, "name": "", "address": "", "email": ""}
+    return serialize_doc(user)
+

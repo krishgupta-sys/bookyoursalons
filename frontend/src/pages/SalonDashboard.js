@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { 
   Scissors, Calendar, DollarSign, Clock, User, Camera, Upload, MapPin, 
   AlertTriangle, CreditCard, IndianRupee, Check, X, Bell, Phone, Timer,
-  TrendingUp, Users, Star, BarChart3, Image, Settings, Power, Pencil
+  TrendingUp, Users, Star, BarChart3, Image, Settings, Power, Pencil, Gift, Sparkles
 } from 'lucide-react';
 import LocationPickerModal from '../components/LocationPickerModal';
 
@@ -709,6 +709,34 @@ function SalonDashboard() {
           </Card>
         )}
 
+        {/* SPECIAL OFFER CARD - 50% Discount Highlight */}
+        {discountInfo?.eligible && (
+          <Card className="mb-4 border-2 border-orange-400 bg-gradient-to-r from-orange-50 via-red-50 to-pink-50 overflow-hidden relative" data-testid="special-offer-card">
+            <div className="absolute top-0 right-0 bg-gradient-to-l from-red-500 to-orange-500 text-white text-xs font-bold px-4 py-1 rounded-bl-lg">
+              <Sparkles className="w-3 h-3 inline mr-1" />
+              LIMITED OFFER
+            </div>
+            <CardContent className="pt-6">
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="bg-gradient-to-br from-orange-500 to-red-500 p-4 rounded-full">
+                  <Gift className="w-10 h-10 text-white" />
+                </div>
+                <div className="text-center sm:text-left">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+                    <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-red-600">
+                      🔥 50% OFF
+                    </span>
+                  </div>
+                  <p className="text-lg font-semibold text-gray-800">You're eligible for 50% discount!</p>
+                  <p className="text-sm text-orange-600 font-medium">
+                    ⏰ Only {discountInfo.slotsRemaining || 0} slots remaining - Act fast!
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* UPGRADE PLAN CARD */}
         <Card className="mb-4 border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50" data-testid="upgrade-plan-card">
           <CardContent className="pt-4">
@@ -1274,158 +1302,239 @@ function SalonDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* EDIT PROFILE DIALOG */}
+      {/* EDIT PROFILE DIALOG - Enhanced UI */}
       <Dialog open={showEditProfileDialog} onOpenChange={setShowEditProfileDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-purple-600" />
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="bg-purple-100 p-2 rounded-lg">
+                <Pencil className="w-5 h-5 text-purple-600" />
+              </div>
               Edit Salon Profile
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            {/* Basic Info */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Salon Name *</label>
-                <Input
-                  data-testid="edit-salon-name"
-                  value={editProfileData.name}
-                  onChange={(e) => setEditProfileData({...editProfileData, name: e.target.value})}
-                  placeholder="Your salon name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Business Type</label>
-                <select
-                  data-testid="edit-business-type"
-                  value={editProfileData.business_type}
-                  onChange={(e) => setEditProfileData({...editProfileData, business_type: e.target.value})}
-                  className="w-full h-10 px-3 rounded-md border border-gray-200"
-                >
-                  <option value="salon">Salon</option>
-                  <option value="spa">Spa</option>
-                  <option value="barbershop">Barbershop</option>
-                  <option value="beauty_parlour">Beauty Parlour</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Address *</label>
-              <Input
-                data-testid="edit-address"
-                value={editProfileData.address}
-                onChange={(e) => setEditProfileData({...editProfileData, address: e.target.value})}
-                placeholder="Full address"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Area/Locality</label>
-                <Input
-                  data-testid="edit-area"
-                  value={editProfileData.area}
-                  onChange={(e) => setEditProfileData({...editProfileData, area: e.target.value})}
-                  placeholder="Area name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Phone Number</label>
-                <Input
-                  data-testid="edit-phone"
-                  value={editProfileData.phone}
-                  onChange={(e) => setEditProfileData({...editProfileData, phone: e.target.value})}
-                  placeholder="+91XXXXXXXXXX"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Secondary Phone</label>
-                <Input
-                  value={editProfileData.secondary_phone}
-                  onChange={(e) => setEditProfileData({...editProfileData, secondary_phone: e.target.value})}
-                  placeholder="Optional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Staff Count</label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={editProfileData.staff_count}
-                  onChange={(e) => setEditProfileData({...editProfileData, staff_count: parseInt(e.target.value) || 1})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Avg Service Time (min)</label>
-                <Input
-                  type="number"
-                  min="10"
-                  value={editProfileData.avg_service_time}
-                  onChange={(e) => setEditProfileData({...editProfileData, avg_service_time: parseInt(e.target.value) || 30})}
-                />
-              </div>
-            </div>
-
-            {/* Services Section */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium">Services</label>
-                <Button type="button" size="sm" variant="outline" onClick={addServiceToEdit}>
-                  + Add Service
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {editProfileServices.map((service, index) => (
-                  <div key={service.id || index} className="flex gap-2 items-center">
+          <div className="space-y-6">
+            {/* Basic Info Card */}
+            <Card className="border-2 border-purple-100">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-purple-700 flex items-center gap-2">
+                  <Scissors className="w-4 h-4" />
+                  Basic Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700">
+                      <span className="flex items-center gap-1">Salon Name <span className="text-red-500">*</span></span>
+                    </label>
                     <Input
-                      placeholder="Service name"
-                      value={service.name}
-                      onChange={(e) => updateServiceInEdit(index, 'name', e.target.value)}
-                      className="flex-1"
+                      data-testid="edit-salon-name"
+                      value={editProfileData.name || ''}
+                      onChange={(e) => setEditProfileData({...editProfileData, name: e.target.value})}
+                      placeholder="Your salon name"
+                      className="border-gray-300 focus:border-purple-500"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700">Business Type</label>
+                    <select
+                      data-testid="edit-business-type"
+                      value={editProfileData.business_type || 'salon'}
+                      onChange={(e) => setEditProfileData({...editProfileData, business_type: e.target.value})}
+                      className="w-full h-10 px-3 rounded-md border border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    >
+                      <option value="salon">💇 Salon</option>
+                      <option value="spa">🧖 Spa</option>
+                      <option value="barbershop">💈 Barbershop</option>
+                      <option value="beauty_parlour">💄 Beauty Parlour</option>
+                    </select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Location Card */}
+            <Card className="border-2 border-blue-100">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  Location Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-gray-700">
+                    <span className="flex items-center gap-1">Address <span className="text-red-500">*</span></span>
+                  </label>
+                  <Input
+                    data-testid="edit-address"
+                    value={editProfileData.address || ''}
+                    onChange={(e) => setEditProfileData({...editProfileData, address: e.target.value})}
+                    placeholder="Full address"
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-gray-700">Area/Locality</label>
+                  <Input
+                    data-testid="edit-area"
+                    value={editProfileData.area || ''}
+                    onChange={(e) => setEditProfileData({...editProfileData, area: e.target.value})}
+                    placeholder="Area name (e.g., Koramangala, Bandra)"
+                    className="border-gray-300 focus:border-blue-500"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Contact Card */}
+            <Card className="border-2 border-green-100">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-green-700 flex items-center gap-2">
+                  <Phone className="w-4 h-4" />
+                  Contact Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700">Primary Phone</label>
+                    <Input
+                      data-testid="edit-phone"
+                      value={editProfileData.phone || ''}
+                      onChange={(e) => setEditProfileData({...editProfileData, phone: e.target.value})}
+                      placeholder="+91XXXXXXXXXX"
+                      className="border-gray-300 focus:border-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700">Secondary Phone</label>
+                    <Input
+                      value={editProfileData.secondary_phone || ''}
+                      onChange={(e) => setEditProfileData({...editProfileData, secondary_phone: e.target.value})}
+                      placeholder="Optional"
+                      className="border-gray-300 focus:border-green-500"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Operations Card */}
+            <Card className="border-2 border-orange-100">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-orange-700 flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Operations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700">Staff Count</label>
                     <Input
                       type="number"
-                      placeholder="Price"
-                      value={service.price}
-                      onChange={(e) => updateServiceInEdit(index, 'price', parseInt(e.target.value) || 0)}
-                      className="w-24"
+                      min="1"
+                      value={editProfileData.staff_count || 1}
+                      onChange={(e) => setEditProfileData({...editProfileData, staff_count: parseInt(e.target.value) || 1})}
+                      className="border-gray-300 focus:border-orange-500"
                     />
-                    <Button 
-                      type="button" 
-                      size="sm" 
-                      variant="destructive"
-                      onClick={() => removeServiceFromEdit(index)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
                   </div>
-                ))}
-                {editProfileServices.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-2">No services added yet</p>
-                )}
-              </div>
-            </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700">Avg Service Time (min)</label>
+                    <Input
+                      type="number"
+                      min="10"
+                      value={editProfileData.avg_service_time || 30}
+                      onChange={(e) => setEditProfileData({...editProfileData, avg_service_time: parseInt(e.target.value) || 30})}
+                      className="border-gray-300 focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-            <div className="flex gap-2 pt-4">
+            {/* Services Card */}
+            <Card className="border-2 border-indigo-100">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold text-indigo-700 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    Services & Pricing
+                  </CardTitle>
+                  <Button type="button" size="sm" variant="outline" onClick={addServiceToEdit} className="text-indigo-600 border-indigo-300 hover:bg-indigo-50">
+                    + Add Service
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {editProfileServices.map((service, index) => (
+                    <div key={service.id || index} className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg">
+                      <Input
+                        placeholder="Service name (e.g., Haircut)"
+                        value={service.name || ''}
+                        onChange={(e) => updateServiceInEdit(index, 'name', e.target.value)}
+                        className="flex-1 border-gray-300"
+                      />
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-500">₹</span>
+                        <Input
+                          type="number"
+                          placeholder="Price"
+                          value={service.price || ''}
+                          onChange={(e) => updateServiceInEdit(index, 'price', parseInt(e.target.value) || 0)}
+                          className="w-24 border-gray-300"
+                        />
+                      </div>
+                      <Button 
+                        type="button" 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => removeServiceFromEdit(index)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {editProfileServices.length === 0 && (
+                    <div className="text-center py-6 text-gray-500">
+                      <DollarSign className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">No services added yet</p>
+                      <p className="text-xs text-gray-400">Click "Add Service" to add your offerings</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex gap-3 pt-6 border-t">
               <Button 
                 variant="outline" 
                 onClick={() => setShowEditProfileDialog(false)}
-                className="flex-1"
+                className="flex-1 py-5"
               >
                 Cancel
               </Button>
               <Button 
                 onClick={handleUpdateProfile}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className="flex-1 py-5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold shadow-lg"
                 disabled={loading || !editProfileData.name}
                 data-testid="save-profile-btn"
               >
-                {loading ? 'Saving...' : 'Save Changes'}
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                    Saving...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Check className="w-5 h-5" />
+                    Save Changes
+                  </span>
+                )}
               </Button>
             </div>
           </div>

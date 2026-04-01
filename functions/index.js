@@ -169,6 +169,13 @@ exports.api = functions.https.onRequest((req, res) => {
       }
 
       // ========== CUSTOMER ROUTES ==========
+      if (path === "/user/update-profile" && method === "PUT") {
+        return handleUpdateUserProfile(req, res);
+      }
+      if (path.match(/^\/user\/profile\/.+$/) && method === "GET") {
+        const phone = decodeURIComponent(path.split("/").slice(3).join("/"));
+        return handleGetUserProfile(req, res, phone);
+      }
       if (path.match(/^\/customer\/[\w\+]+\/service-reminders$/) && method === "GET") {
         const phone = decodeURIComponent(path.split("/")[2]);
         return handleGetServiceReminders(req, res, phone);
@@ -2025,6 +2032,74 @@ async function handleUpdateSalonProfile(req, res) {
   } catch (error) {
     console.error("Update salon profile error:", error);
     return res.status(500).json({ error: "Failed to update profile", detail: error.message });
+  }
+}
+
+
+// ==================== FEATURE: CUSTOMER PROFILE EDIT ====================
+
+async function handleUpdateUserProfile(req, res) {
+  try {
+    const data = req.body;
+    const { phone, firebase_uid } = data;
+    
+    if (!phone && !firebase_uid) {
+      return res.status(400).json({ error: "phone or firebase_uid is required" });
+    }
+    
+    const now = admin.firestore.Timestamp.now();
+    
+    // Find or create user by phone
+    let userRef;
+    let docId = phone || firebase_uid;
+    
+    if (phone) {
+      userRef = db.collection("users").doc(phone);
+    } else {
+      const snapshot = await db.collection("users").where("firebase_uid", "==", firebase_uid).limit(1).get();
+      if (!snapshot.empty) {
+        userRef = snapshot.docs[0].ref;
+        docId = snapshot.docs[0].id;
+      } else {
+        userRef = db.collection("users").doc(firebase_uid);
+      }
+    }
+    
+    // Build update data
+    const updateData = {
+      updated_at: now
+    };
+    if (phone) updateData.phone = phone;
+    if (firebase_uid) updateData.firebase_uid = firebase_uid;
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.gender !== undefined) updateData.gender = data.gender;
+    
+    // Use set with merge to create or update
+    await userRef.set(updateData, { merge: true });
+    
+    const updatedDoc = await userRef.get();
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      user: updatedDoc.data()
+    });
+  } catch (error) {
+    console.error("Update user profile error:", error);
+    return res.status(500).json({ error: "Failed to update profile", detail: error.message });
+  }
+}
+
+async function handleGetUserProfile(req, res, phone) {
+  try {
+    const userDoc = await db.collection("users").doc(phone).get();
+    if (!userDoc.exists) {
+      return res.status(200).json({ phone, name: "", address: "", email: "" });
+    }
+    return res.status(200).json(userDoc.data());
+  } catch (error) {
+    console.error("Get user profile error:", error);
+    return res.status(200).json({ phone, name: "", address: "", email: "" });
   }
 }
 
