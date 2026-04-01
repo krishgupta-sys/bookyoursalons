@@ -163,6 +163,50 @@ class BookYourSalonsAPITester:
         
         return self.run_test("Approve Booking", "POST", f"api/booking/{self.test_booking_id}/approve", 200)
 
+    def test_discount_eligibility(self):
+        """Test 50% discount eligibility for first 100 salons"""
+        return self.run_test("Check Discount Eligibility", "GET", "api/salon/discount-eligibility", 200)
+
+    def test_salon_subscribe(self):
+        """Test salon subscription with discount logic"""
+        if not self.test_salon_id:
+            print("❌ Skipping salon subscription - no test salon created")
+            return False, {}
+        
+        subscription_data = {
+            "salon_id": self.test_salon_id,
+            "plan": "1_month",
+            "original_price": 999,
+            "payment_id": "test_payment_123"
+        }
+        
+        return self.run_test("Salon Subscribe", "POST", "api/salon/subscribe", 200, subscription_data)
+
+    def test_update_salon_profile(self):
+        """Test salon profile update with partial update support"""
+        # Use the existing test salon from credentials
+        test_salon_id = "8746ea9e-c78a-460f-a347-062a13ff8ca5"
+        
+        update_data = {
+            "salonId": test_salon_id,
+            "firebase_uid": "test-uid-123",
+            "name": "Updated Test Salon",
+            "address": "Updated Address, Delhi",
+            "area": "Updated Area",
+            "phone": "+919999999999",
+            "secondary_phone": "+919876543211",
+            "staff_count": 3,
+            "avg_service_time": 45,
+            "business_type": "spa",
+            "services": [
+                {"name": "Updated Haircut", "price": 250},
+                {"name": "Updated Shave", "price": 150},
+                {"name": "Facial", "price": 500}
+            ]
+        }
+        
+        return self.run_test("Update Salon Profile", "PUT", "api/salon/update-profile", 200, update_data)
+
 def main():
     print("🚀 Starting BookYourSalons API Tests")
     print("=" * 50)
@@ -184,6 +228,9 @@ def main():
         ("Salon Slots", tester.test_salon_slots),
         ("Create Booking", tester.test_create_booking),
         ("Approve Booking", tester.test_approve_booking),
+        ("Discount Eligibility", tester.test_discount_eligibility),
+        ("Salon Subscribe", tester.test_salon_subscribe),
+        ("Update Salon Profile", tester.test_update_salon_profile),
     ]
     
     for test_name, test_func in tests:

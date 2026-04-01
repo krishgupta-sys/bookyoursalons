@@ -1048,3 +1048,138 @@ async def admin_update_booking_status(booking_id: str, status: str):
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+# ==================== FEATURE: 50% DISCOUNT FOR FIRST 100 SALONS ====================
+
+@app.get("/api/salon/discount-eligibility")
+async def check_discount_eligibility():
+    """Check if salon is eligible for 50% discount (first 100 salons)"""
+    total_salons = db.salons.count_documents({})
+    
+    is_eligible = total_salons < 100
+    discount_percent = 50 if is_eligible else 0
+    slots_remaining = max(0, 100 - total_salons)
+    
+    return {
+        "eligible": is_eligible,
+        "discountPercent": discount_percent,
+        "totalSalons": total_salons,
+        "slotsRemaining": slots_remaining,
+        "message": f"You're eligible for 50% OFF! Only {slots_remaining} slots left for this offer." if is_eligible else "The first 100 salons offer has ended."
+    }
+
+@app.post("/api/salon/subscribe")
+async def salon_subscribe(request: Request):
+    """Process salon subscription with discount logic"""
+    data = await request.json()
+    salon_id = data.get("salon_id")
+    plan = data.get("plan")
+    original_price = data.get("original_price")
+    payment_id = data.get("payment_id")
+    
+    if not salon_id or not plan or not original_price:
+        raise HTTPException(400, "salon_id, plan, and original_price are required")
+    
+    # Check discount eligibility
+    total_salons = db.salons.count_documents({})
+    is_eligible = total_salons < 100
+    discount_percent = 50 if is_eligible else 0
+    
+    # Calculate final price
+    final_price = round(original_price * 0.5) if is_eligible else original_price
+    
+    now = datetime.now()
+    plan_days = 90 if plan == '3_months' else 30
+    expires_at = now + timedelta(days=plan_days)
+    
+    # Update salon subscription
+    db.salons.update_one(
+        {"salon_id": salon_id},
+        {"$set": {
+            "subscriptionStatus": "active",
+            "subscription": {
+                "plan": plan,
+                "plan_name": "3 Months Plan" if plan == '3_months' else "1 Month Plan",
+                "original_price": original_price,
+                "final_price": final_price,
+                "discountApplied": is_eligible,
+                "discountPercent": discount_percent,
+                "payment_status": "paid",
+                "payment_id": payment_id,
+                "purchased_at": now,
+                "expires_at": expires_at
+            }
+        }}
+    )
+    
+    return {
+        "message": "Subscription activated successfully",
+        "subscription": {
+            "plan": plan,
+            "original_price": original_price,
+            "final_price": final_price,
+            "discountApplied": is_eligible,
+            "discountPercent": discount_percent,
+            "expires_at": expires_at.isoformat()
+        }
+    }
+
+# ==================== FEATURE: SALON PROFILE EDIT ====================
+
+@app.put("/api/salon/update-profile")
+async def update_salon_profile(request: Request):
+    """Update salon profile with partial update support"""
+    data = await request.json()
+    salon_id = data.get("salonId")
+    firebase_uid = data.get("firebase_uid")
+    
+    if not salon_id:
+        raise HTTPException(400, "salonId is required")
+    
+    # Verify salon exists
+    existing_salon = db.salons.find_one({"salon_id": salon_id})
+    if not existing_salon:
+        raise HTTPException(404, "Salon not found")
+    
+    # Optional: Verify ownership
+    if firebase_uid and existing_salon.get("firebase_uid") != firebase_uid:
+        raise HTTPException(403, "Unauthorized: You don't own this salon")
+    
+    # Build partial update - only update provided fields
+    update_data = {}
+    
+    if data.get("name") is not None:
+        update_data["salon_name"] = data["name"]
+    if data.get("address") is not None:
+        update_data["address"] = data["address"]
+    if data.get("area") is not None:
+        update_data["area"] = data["area"]
+    if data.get("phone") is not None:
+        update_data["phone"] = data["phone"]
+    if data.get("secondary_phone") is not None:
+        update_data["secondary_phone"] = data["secondary_phone"]
+    if data.get("services") is not None:
+        update_data["services"] = data["services"]
+    if data.get("image") is not None:
+        update_data["photo_url"] = data["image"]
+    if data.get("staff_count") is not None:
+        update_data["staff_count"] = int(data["staff_count"])
+    if data.get("avg_service_time") is not None:
+        update_data["avg_service_time"] = int(data["avg_service_time"])
+    if data.get("business_type") is not None:
+        update_data["business_type"] = data["business_type"]
+    
+    # Add updated timestamp
+    update_data["updated_at"] = datetime.now()
+    
+    # Perform partial update
+    db.salons.update_one({"salon_id": salon_id}, {"$set": update_data})
+    
+    # Fetch and return updated salon
+    updated_salon = db.salons.find_one({"salon_id": salon_id}, {"_id": 0})
+    
+    return {
+        "message": "Profile updated successfully",
+        "salon": serialize_doc(updated_salon)
+    }
+

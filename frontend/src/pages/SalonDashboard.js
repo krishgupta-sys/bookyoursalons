@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { 
   Scissors, Calendar, DollarSign, Clock, User, Camera, Upload, MapPin, 
   AlertTriangle, CreditCard, IndianRupee, Check, X, Bell, Phone, Timer,
-  TrendingUp, Users, Star, BarChart3, Image, Settings, Power
+  TrendingUp, Users, Star, BarChart3, Image, Settings, Power, Pencil
 } from 'lucide-react';
 import LocationPickerModal from '../components/LocationPickerModal';
 
@@ -56,6 +56,19 @@ function SalonDashboard() {
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('1_month');
   const [trialInfo, setTrialInfo] = useState(null);
+  const [showEditProfileDialog, setShowEditProfileDialog] = useState(false);
+  const [editProfileData, setEditProfileData] = useState({
+    name: '',
+    address: '',
+    area: '',
+    phone: '',
+    secondary_phone: '',
+    staff_count: 1,
+    avg_service_time: 30,
+    business_type: 'salon'
+  });
+  const [editProfileServices, setEditProfileServices] = useState([]);
+  const [discountInfo, setDiscountInfo] = useState(null);
 
   const SUBSCRIPTION_PLANS = {
     '1_month': { price: 999, days: 30, name: '1 Month Plan' },
@@ -234,6 +247,9 @@ function SalonDashboard() {
 
         // Fetch dashboard analytics
         fetchDashboardAnalytics(salonData.salon_id);
+        
+        // Fetch discount eligibility
+        fetchDiscountEligibility();
       }
     } catch (error) {
       console.error('Error fetching salon data:', error);
@@ -242,6 +258,82 @@ function SalonDashboard() {
       }
     }
     setLoading(false);
+  };
+
+  // Fetch discount eligibility for first 100 salons offer
+  const fetchDiscountEligibility = async () => {
+    try {
+      const response = await axios.get(`${API}/salon/discount-eligibility`);
+      setDiscountInfo(response.data);
+    } catch (error) {
+      console.error('Error fetching discount info:', error);
+    }
+  };
+
+  // Open edit profile dialog with current salon data
+  const openEditProfileDialog = () => {
+    if (salon) {
+      setEditProfileData({
+        name: salon.salon_name || '',
+        address: salon.address || '',
+        area: salon.area || '',
+        phone: salon.phone || '',
+        secondary_phone: salon.secondary_phone || '',
+        staff_count: salon.staff_count || 1,
+        avg_service_time: salon.avg_service_time || 30,
+        business_type: salon.business_type || 'salon'
+      });
+      setEditProfileServices(salon.services || []);
+      setShowEditProfileDialog(true);
+    }
+  };
+
+  // Handle profile update
+  const handleUpdateProfile = async () => {
+    if (!salon?.salon_id) return;
+    
+    setLoading(true);
+    try {
+      const updatePayload = {
+        salonId: salon.salon_id,
+        firebase_uid: localStorage.getItem('firebaseUid'),
+        name: editProfileData.name,
+        address: editProfileData.address,
+        area: editProfileData.area,
+        phone: editProfileData.phone,
+        secondary_phone: editProfileData.secondary_phone,
+        staff_count: editProfileData.staff_count,
+        avg_service_time: editProfileData.avg_service_time,
+        business_type: editProfileData.business_type,
+        services: editProfileServices
+      };
+      
+      await axios.put(`${API}/salon/update-profile`, updatePayload);
+      toast.success('Profile updated successfully!');
+      setShowEditProfileDialog(false);
+      fetchSalonData();
+    } catch (error) {
+      console.error('Profile update error:', error);
+      toast.error(error.response?.data?.error || 'Failed to update profile');
+    }
+    setLoading(false);
+  };
+
+  // Add service to edit form
+  const addServiceToEdit = () => {
+    setEditProfileServices([...editProfileServices, { id: Date.now().toString(), name: '', price: 0, duration: 30 }]);
+  };
+
+  // Remove service from edit form
+  const removeServiceFromEdit = (index) => {
+    setEditProfileServices(editProfileServices.filter((_, i) => i !== index));
+  };
+
+  // Update service in edit form
+  const updateServiceInEdit = (index, field, value) => {
+    const updated = [...editProfileServices];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditProfileServices(updated);
   };
 
   const handleApproveBooking = async (bookingId) => {
@@ -520,6 +612,10 @@ function SalonDashboard() {
                 <CreditCard className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">Bank</span>
               </Button>
+              <Button variant="outline" size="sm" onClick={openEditProfileDialog} data-testid="edit-profile-btn">
+                <Settings className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Edit Profile</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 Logout
               </Button>
@@ -620,9 +716,17 @@ function SalonDashboard() {
               <div>
                 <h3 className="text-lg font-bold text-purple-700">Upgrade Your Plan</h3>
                 <p className="text-sm text-gray-600">Unlock unlimited bookings and premium visibility.</p>
+                {discountInfo?.eligible && (
+                  <p className="text-sm font-semibold text-green-600 mt-1">
+                    🎉 50% OFF - Only {discountInfo.slotsRemaining} slots left!
+                  </p>
+                )}
               </div>
               <Button 
-                onClick={() => setShowUpgradeDialog(true)}
+                onClick={() => {
+                  fetchDiscountEligibility();
+                  setShowUpgradeDialog(true);
+                }}
                 className="bg-purple-600 hover:bg-purple-700"
                 data-testid="upgrade-plan-btn"
               >
@@ -1060,6 +1164,21 @@ function SalonDashboard() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* 50% Discount Banner for First 100 Salons */}
+            {discountInfo?.eligible && (
+              <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-lg" data-testid="discount-banner">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🎉</span>
+                  <div>
+                    <p className="font-bold text-green-700">50% OFF - Early Bird Offer!</p>
+                    <p className="text-xs text-green-600">
+                      You're one of the first {100 - discountInfo.slotsRemaining + 1} salons! Only {discountInfo.slotsRemaining} slots left.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <p className="text-sm text-gray-600">
               Choose a subscription plan to continue receiving bookings after your trial ends.
             </p>
@@ -1077,7 +1196,14 @@ function SalonDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold">1 Month Plan</p>
-                    <p className="text-2xl font-bold text-purple-700">₹999</p>
+                    {discountInfo?.eligible ? (
+                      <div className="flex items-center gap-2">
+                        <p className="text-2xl font-bold text-purple-700">₹{Math.round(999 * 0.5)}</p>
+                        <p className="text-sm text-gray-400 line-through">₹999</p>
+                      </div>
+                    ) : (
+                      <p className="text-2xl font-bold text-purple-700">₹999</p>
+                    )}
                   </div>
                   {selectedPlan === '1_month' && (
                     <Check className="w-6 h-6 text-purple-600" />
@@ -1097,8 +1223,15 @@ function SalonDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold">3 Months Plan</p>
-                    <p className="text-2xl font-bold text-purple-700">₹2499</p>
-                    <p className="text-xs text-green-600">Save ₹498</p>
+                    {discountInfo?.eligible ? (
+                      <div className="flex items-center gap-2">
+                        <p className="text-2xl font-bold text-purple-700">₹{Math.round(2499 * 0.5)}</p>
+                        <p className="text-sm text-gray-400 line-through">₹2499</p>
+                      </div>
+                    ) : (
+                      <p className="text-2xl font-bold text-purple-700">₹2499</p>
+                    )}
+                    <p className="text-xs text-green-600">Save ₹498{discountInfo?.eligible ? ' + 50% discount' : ''}</p>
                   </div>
                   {selectedPlan === '3_months' && (
                     <Check className="w-6 h-6 text-purple-600" />
@@ -1110,25 +1243,191 @@ function SalonDashboard() {
             {/* UPI Payment Section */}
             <div className="p-4 bg-blue-50 rounded-lg">
               <p className="font-medium text-blue-800 mb-2">Payment via UPI</p>
-              <p className="text-sm text-blue-700">Pay ₹{SUBSCRIPTION_PLANS[selectedPlan].price} to:</p>
+              <p className="text-sm text-blue-700">
+                Pay ₹{discountInfo?.eligible 
+                  ? Math.round(SUBSCRIPTION_PLANS[selectedPlan].price * 0.5) 
+                  : SUBSCRIPTION_PLANS[selectedPlan].price} to:
+              </p>
               <p className="font-mono text-blue-800 mt-1 bg-white px-2 py-1 rounded">6205777957-i24a@axl</p>
               <Button
                 type="button"
                 className="w-full mt-3 bg-blue-600 hover:bg-blue-700"
                 onClick={() => {
-                  const amount = SUBSCRIPTION_PLANS[selectedPlan].price;
+                  const amount = discountInfo?.eligible 
+                    ? Math.round(SUBSCRIPTION_PLANS[selectedPlan].price * 0.5) 
+                    : SUBSCRIPTION_PLANS[selectedPlan].price;
                   const upiLink = `upi://pay?pa=6205777957-i24a@axl&pn=BookYourSalons&am=${amount}&cu=INR&tn=Subscription_${selectedPlan}`;
                   window.location.href = upiLink;
                 }}
               >
                 <IndianRupee className="w-4 h-4 mr-2" />
-                Pay ₹{SUBSCRIPTION_PLANS[selectedPlan].price} via UPI App
+                Pay ₹{discountInfo?.eligible 
+                  ? Math.round(SUBSCRIPTION_PLANS[selectedPlan].price * 0.5) 
+                  : SUBSCRIPTION_PLANS[selectedPlan].price} via UPI App
               </Button>
             </div>
 
             <p className="text-xs text-gray-500 text-center">
               After payment, your subscription will be activated within 24 hours. Contact support if you face any issues.
             </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* EDIT PROFILE DIALOG */}
+      <Dialog open={showEditProfileDialog} onOpenChange={setShowEditProfileDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-purple-600" />
+              Edit Salon Profile
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Basic Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Salon Name *</label>
+                <Input
+                  data-testid="edit-salon-name"
+                  value={editProfileData.name}
+                  onChange={(e) => setEditProfileData({...editProfileData, name: e.target.value})}
+                  placeholder="Your salon name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Business Type</label>
+                <select
+                  data-testid="edit-business-type"
+                  value={editProfileData.business_type}
+                  onChange={(e) => setEditProfileData({...editProfileData, business_type: e.target.value})}
+                  className="w-full h-10 px-3 rounded-md border border-gray-200"
+                >
+                  <option value="salon">Salon</option>
+                  <option value="spa">Spa</option>
+                  <option value="barbershop">Barbershop</option>
+                  <option value="beauty_parlour">Beauty Parlour</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Address *</label>
+              <Input
+                data-testid="edit-address"
+                value={editProfileData.address}
+                onChange={(e) => setEditProfileData({...editProfileData, address: e.target.value})}
+                placeholder="Full address"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Area/Locality</label>
+                <Input
+                  data-testid="edit-area"
+                  value={editProfileData.area}
+                  onChange={(e) => setEditProfileData({...editProfileData, area: e.target.value})}
+                  placeholder="Area name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone Number</label>
+                <Input
+                  data-testid="edit-phone"
+                  value={editProfileData.phone}
+                  onChange={(e) => setEditProfileData({...editProfileData, phone: e.target.value})}
+                  placeholder="+91XXXXXXXXXX"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Secondary Phone</label>
+                <Input
+                  value={editProfileData.secondary_phone}
+                  onChange={(e) => setEditProfileData({...editProfileData, secondary_phone: e.target.value})}
+                  placeholder="Optional"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Staff Count</label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editProfileData.staff_count}
+                  onChange={(e) => setEditProfileData({...editProfileData, staff_count: parseInt(e.target.value) || 1})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Avg Service Time (min)</label>
+                <Input
+                  type="number"
+                  min="10"
+                  value={editProfileData.avg_service_time}
+                  onChange={(e) => setEditProfileData({...editProfileData, avg_service_time: parseInt(e.target.value) || 30})}
+                />
+              </div>
+            </div>
+
+            {/* Services Section */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">Services</label>
+                <Button type="button" size="sm" variant="outline" onClick={addServiceToEdit}>
+                  + Add Service
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {editProfileServices.map((service, index) => (
+                  <div key={service.id || index} className="flex gap-2 items-center">
+                    <Input
+                      placeholder="Service name"
+                      value={service.name}
+                      onChange={(e) => updateServiceInEdit(index, 'name', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Price"
+                      value={service.price}
+                      onChange={(e) => updateServiceInEdit(index, 'price', parseInt(e.target.value) || 0)}
+                      className="w-24"
+                    />
+                    <Button 
+                      type="button" 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => removeServiceFromEdit(index)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                {editProfileServices.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-2">No services added yet</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowEditProfileDialog(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleUpdateProfile}
+                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                disabled={loading || !editProfileData.name}
+                data-testid="save-profile-btn"
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

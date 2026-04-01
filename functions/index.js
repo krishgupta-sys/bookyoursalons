@@ -46,6 +46,15 @@ exports.api = functions.https.onRequest((req, res) => {
       if (path === "/salon/register" && method === "POST") {
         return handleSalonRegister(req, res);
       }
+      if (path === "/salon/update-profile" && method === "PUT") {
+        return handleUpdateSalonProfile(req, res);
+      }
+      if (path === "/salon/discount-eligibility" && method === "GET") {
+        return handleCheckDiscountEligibility(req, res);
+      }
+      if (path === "/salon/subscribe" && method === "POST") {
+        return handleSalonSubscribe(req, res);
+      }
       if (path.match(/^\/salon\/user\/[\w-]+$/) && method === "GET") {
         const uid = path.split("/")[3];
         return handleGetSalonByUser(req, res, uid);
@@ -1856,3 +1865,166 @@ async function handleAdminUpdateBookingStatus(req, res, bookingId) {
     return res.status(500).json({ error: "Failed to update booking status" });
   }
 }
+
+// ==================== FEATURE: 50% DISCOUNT FOR FIRST 100 SALONS ====================
+
+async function handleCheckDiscountEligibility(req, res) {
+  try {
+    // Count total salons in Firestore
+    const salonsSnapshot = await db.collection("salons").get();
+    const totalSalons = salonsSnapshot.size;
+    
+    const isEligible = totalSalons < 100;
+    const discountPercent = isEligible ? 50 : 0;
+    const slotsRemaining = Math.max(0, 100 - totalSalons);
+    
+    return res.status(200).json({
+      eligible: isEligible,
+      discountPercent: discountPercent,
+      totalSalons: totalSalons,
+      slotsRemaining: slotsRemaining,
+      message: isEligible 
+        ? `You're eligible for 50% OFF! Only ${slotsRemaining} slots left for this offer.`
+        : "The first 100 salons offer has ended."
+    });
+  } catch (error) {
+    console.error("Check discount eligibility error:", error);
+    return res.status(500).json({ error: "Failed to check eligibility" });
+  }
+}
+
+async function handleSalonSubscribe(req, res) {
+  try {
+    const { salon_id, plan, original_price, payment_id } = req.body;
+    
+    if (!salon_id || !plan || !original_price) {
+      return res.status(400).json({ error: "salon_id, plan, and original_price are required" });
+    }
+    
+    // Check discount eligibility
+    const salonsSnapshot = await db.collection("salons").get();
+    const totalSalons = salonsSnapshot.size;
+    const isEligible = totalSalons < 100;
+    const discountPercent = isEligible ? 50 : 0;
+    
+    // Calculate final price
+    const finalPrice = isEligible 
+      ? Math.round(original_price * 0.5) 
+      : original_price;
+    
+    const now = admin.firestore.Timestamp.now();
+    const planDays = plan === '3_months' ? 90 : 30;
+    const expiresAt = new Date(Date.now() + planDays * 24 * 60 * 60 * 1000);
+    
+    // Update salon subscription
+    await db.collection("salons").doc(salon_id).update({
+      subscriptionStatus: "active",
+      subscription: {
+        plan: plan,
+        plan_name: plan === '3_months' ? '3 Months Plan' : '1 Month Plan',
+        original_price: original_price,
+        final_price: finalPrice,
+        discountApplied: isEligible,
+        discountPercent: discountPercent,
+        payment_status: "paid",
+        payment_id: payment_id || null,
+        purchased_at: now,
+        expires_at: admin.firestore.Timestamp.fromDate(expiresAt)
+      }
+    });
+    
+    return res.status(200).json({
+      message: "Subscription activated successfully",
+      subscription: {
+        plan: plan,
+        original_price: original_price,
+        final_price: finalPrice,
+        discountApplied: isEligible,
+        discountPercent: discountPercent,
+        expires_at: expiresAt.toISOString()
+      }
+    });
+  } catch (error) {
+    console.error("Salon subscribe error:", error);
+    return res.status(500).json({ error: "Failed to process subscription" });
+  }
+}
+
+// ==================== FEATURE: SALON PROFILE EDIT ====================
+
+async function handleUpdateSalonProfile(req, res) {
+  try {
+    const data = req.body;
+    const { salonId, firebase_uid } = data;
+    
+    if (!salonId) {
+      return res.status(400).json({ error: "salonId is required" });
+    }
+    
+    // Verify salon exists and belongs to user
+    const salonDoc = await db.collection("salons").doc(salonId).get();
+    if (!salonDoc.exists) {
+      return res.status(404).json({ error: "Salon not found" });
+    }
+    
+    const existingSalon = salonDoc.data();
+    
+    // Optional: Verify ownership if firebase_uid is provided
+    if (firebase_uid && existingSalon.firebase_uid !== firebase_uid) {
+      return res.status(403).json({ error: "Unauthorized: You don't own this salon" });
+    }
+    
+    // Build partial update object - only update provided fields
+    const updateData = {};
+    
+    if (data.name !== undefined && data.name !== null) {
+      updateData.salon_name = data.name;
+    }
+    if (data.address !== undefined && data.address !== null) {
+      updateData.address = data.address;
+    }
+    if (data.area !== undefined && data.area !== null) {
+      updateData.area = data.area;
+    }
+    if (data.phone !== undefined && data.phone !== null) {
+      updateData.phone = data.phone;
+    }
+    if (data.secondary_phone !== undefined && data.secondary_phone !== null) {
+      updateData.secondary_phone = data.secondary_phone;
+    }
+    if (data.services !== undefined && data.services !== null) {
+      updateData.services = data.services;
+    }
+    if (data.image !== undefined && data.image !== null) {
+      updateData.photo_url = data.image;
+    }
+    if (data.staff_count !== undefined && data.staff_count !== null) {
+      updateData.staff_count = safeNum(data.staff_count, 1);
+    }
+    if (data.avg_service_time !== undefined && data.avg_service_time !== null) {
+      updateData.avg_service_time = safeNum(data.avg_service_time, 30);
+    }
+    if (data.business_type !== undefined && data.business_type !== null) {
+      updateData.business_type = data.business_type;
+    }
+    
+    // Add updated timestamp
+    updateData.updated_at = admin.firestore.Timestamp.now();
+    
+    // Perform partial update
+    await db.collection("salons").doc(salonId).update(updateData);
+    
+    // Fetch and return updated salon
+    const updatedDoc = await db.collection("salons").doc(salonId).get();
+    const updatedSalon = updatedDoc.data();
+    
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      salon: updatedSalon
+    });
+  } catch (error) {
+    console.error("Update salon profile error:", error);
+    return res.status(500).json({ error: "Failed to update profile", detail: error.message });
+  }
+}
+
