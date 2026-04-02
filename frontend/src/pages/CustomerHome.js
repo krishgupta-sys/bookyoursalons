@@ -363,35 +363,43 @@ function CustomerHome() {
   };
 
   // Lock slot when selected to prevent double booking
-  const handleSlotSelect = async (slot) => {
-    if (!selectedSalon || !selectedDate) return;
+  const handleSlotSelect = async (slotTime) => {
+    if (!selectedSalon || !selectedDate || !slotTime) return;
+    
+    // Ensure slotTime is a string, not an object
+    const timeStr = typeof slotTime === 'object' ? (slotTime.time || '') : String(slotTime);
+    if (!timeStr) return;
     
     const phone = localStorage.getItem('userPhone') || '';
     // Ensure date is in YYYY-MM-DD format
     const formattedDate = new Date(selectedDate).toISOString().split('T')[0];
     
+    setLoading(true);
     try {
       const response = await axios.post(`${API}/slot/lock`, {
         salon_id: selectedSalon.salon_id,
-        slot_time: slot,
+        slot_time: timeStr,
         date: formattedDate,
         booking_date: formattedDate,
         customer_phone: phone
       });
       
       if (response.data.locked) {
-        setSelectedSlot(slot);
+        setSelectedSlot(timeStr);
         setCurrentLockId(response.data.lock_id || null);
         toast.success('Slot reserved for 5 minutes');
       } else {
         toast.error(response.data.message || 'Slot not available');
-        // Refresh slots
+        // Refresh slots to get updated availability
         fetchSlots(selectedSalon.salon_id, formattedDate);
       }
     } catch (error) {
       console.error('Slot lock error:', error);
-      setSelectedSlot(slot); // Fallback - allow selection anyway
+      // Fallback - allow selection anyway for better UX
+      setSelectedSlot(timeStr);
+      toast.info('Slot selected');
     }
+    setLoading(false);
   };
 
   const createBooking = async () => {
@@ -400,55 +408,68 @@ function CustomerHome() {
       return;
     }
 
+    const customerPhone = localStorage.getItem('userPhone') || '';
+    const customerName = localStorage.getItem('userName') || 'Customer';
+    
+    // Ensure date is in YYYY-MM-DD format
+    const formattedDate = selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
     // Backend spam check
-    const phone = localStorage.getItem('userPhone');
     try {
-      const spamCheck = await axios.post(`${API}/booking/check-spam`, { customer_phone: phone });
-      if (!spamCheck.data.allowed) {
-        toast.error(spamCheck.data.message);
+      const spamCheck = await axios.post(`${API}/booking/check-spam`, { customer_phone: customerPhone });
+      if (spamCheck.data.is_spam) {
+        toast.error(spamCheck.data.message || 'Too many bookings. Please wait.');
         return;
       }
     } catch (error) {
       console.error('Spam check error:', error);
+      // Continue with booking even if spam check fails
     }
-
-    const customerPhone = localStorage.getItem('userPhone');
-    const customerName = localStorage.getItem('userName') || 'Customer';
 
     setLoading(true);
     try {
       const response = await axios.post(`${API}/booking/create`, {
         salon_id: selectedSalon.salon_id,
-        service_id: selectedService.id,
-        slot_time: selectedSlot,
-        booking_date: selectedDate,
+        salon_name: selectedSalon.salon_name || selectedSalon.name || '',
+        service_id: selectedService.id || '',
+        service_name: selectedService.name || '',
+        service_price: selectedService.price || 0,
+        slot_time: String(selectedSlot), // Ensure slot_time is a string
+        booking_date: formattedDate,
         payment_method: paymentMethod,
         customer_phone: customerPhone,
         customer_name: customerName
       });
 
       if (paymentMethod === 'online') {
-        const orderResponse = await axios.post(`${API}/payment/create-order`, {
-          amount: selectedService.price,
-          booking_id: response.data.booking_id
-        });
+        try {
+          const orderResponse = await axios.post(`${API}/payment/create-order`, {
+            amount: selectedService.price,
+            booking_id: response.data.booking_id
+          });
 
-        const options = {
-          key: process.env.REACT_APP_RAZORPAY_KEY_ID,
-          amount: orderResponse.data.amount,
-          currency: 'INR',
-          order_id: orderResponse.data.id,
-          handler: async (paymentResponse) => {
-            await axios.post(`${API}/payment/verify`, paymentResponse);
-            toast.success('Booking confirmed & payment successful!');
-            setShowBooking(false);
-            resetBookingForm();
-          },
-          prefill: { contact: customerPhone }
-        };
+          const options = {
+            key: process.env.REACT_APP_RAZORPAY_KEY_ID,
+            amount: orderResponse.data.amount,
+            currency: 'INR',
+            order_id: orderResponse.data.id,
+            handler: async (paymentResponse) => {
+              await axios.post(`${API}/payment/verify`, paymentResponse);
+              toast.success('Booking confirmed & payment successful!');
+              setShowBooking(false);
+              resetBookingForm();
+            },
+            prefill: { contact: customerPhone }
+          };
 
-        const razorpay = new window.Razorpay(options);
-        razorpay.open();
+          const razorpay = new window.Razorpay(options);
+          razorpay.open();
+        } catch (paymentError) {
+          console.error('Payment error:', paymentError);
+          toast.success('Booking created! Payment will be at salon.');
+          setShowBooking(false);
+          resetBookingForm();
+        }
       } else {
         toast.success('Booking request sent! Wait for salon confirmation.');
         setShowBooking(false);
@@ -456,7 +477,7 @@ function CustomerHome() {
       }
     } catch (error) {
       console.error('Error creating booking:', error);
-      toast.error(error.response?.data?.detail || 'Failed to create booking');
+      toast.error(error.response?.data?.error || error.response?.data?.detail || 'Failed to create booking');
     }
     setLoading(false);
   };
@@ -1052,17 +1073,30 @@ function CustomerHome() {
                   {availableSlots.length === 0 ? (
                     <p className="col-span-4 text-center text-sm text-gray-500 py-4">No slots available</p>
                   ) : (
-                    availableSlots.map((slot) => (
-                      <Button
-                        key={slot}
-                        size="sm"
-                        variant={selectedSlot === slot ? 'default' : 'outline'}
-                        onClick={() => handleSlotSelect(slot)}
-                        className="text-xs"
-                      >
-                        {slot}
-                      </Button>
-                    ))
+                    availableSlots.map((slot) => {
+                      // Handle both string and object slot formats
+                      const slotTime = typeof slot === 'object' ? (slot.time || '') : slot;
+                      const isAvailable = typeof slot === 'object' ? (slot.available > 0) : true;
+                      const availableCount = typeof slot === 'object' ? slot.available : 1;
+                      const totalCount = typeof slot === 'object' ? slot.total : 1;
+                      
+                      if (!slotTime) return null;
+                      
+                      return (
+                        <Button
+                          key={slotTime}
+                          size="sm"
+                          variant={selectedSlot === slotTime ? 'default' : 'outline'}
+                          onClick={() => isAvailable && handleSlotSelect(slotTime)}
+                          className={`text-xs ${!isAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          disabled={!isAvailable}
+                          title={isAvailable ? `${availableCount}/${totalCount} available` : 'Fully booked'}
+                        >
+                          {slotTime}
+                          {!isAvailable && <span className="ml-1 text-red-500">✗</span>}
+                        </Button>
+                      );
+                    })
                   )}
                 </div>
               </div>
