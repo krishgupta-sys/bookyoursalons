@@ -703,14 +703,31 @@ async function handleGetSalonSlots(req, res, salonId) {
 
     const salonDoc = await db.collection("salons").doc(salonId).get();
     if (!salonDoc.exists) {
-      return res.status(404).json({ error: "Salon not found" });
+      return res.status(404).json({ error: "Salon not found", available_slots: [] });
     }
 
     const salon = salonDoc.data();
-    const openTime = salon.opening_time || "09:00";
-    const closeTime = salon.closing_time || "20:00";
-    const avgTime = safeNum(salon.avg_service_time, 30);
-    const staffCount = safeNum(salon.staff_count, 1);
+    
+    // Handle different formats of opening_time and closing_time
+    let openTime = salon.opening_time || salon.openingTime || "09:00";
+    let closeTime = salon.closing_time || salon.closingTime || "20:00";
+    
+    // If it's an object with toDate, it might be a Timestamp - convert it
+    if (typeof openTime === 'object' && openTime.toDate) {
+      const d = openTime.toDate();
+      openTime = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    }
+    if (typeof closeTime === 'object' && closeTime.toDate) {
+      const d = closeTime.toDate();
+      closeTime = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    }
+    
+    // Ensure strings
+    openTime = String(openTime);
+    closeTime = String(closeTime);
+    
+    const avgTime = safeNum(salon.avg_service_time || salon.avgServiceTime, 30);
+    const staffCount = safeNum(salon.staff_count || salon.staffCount, 1);
 
     // Get booked slots
     const bookingsSnapshot = await db.collection("bookings")
@@ -726,22 +743,30 @@ async function handleGetSalonSlots(req, res, salonId) {
     });
 
     // Get locked slots
-    const lockedSnapshot = await db.collection("slot_locks")
-      .where("salon_id", "==", salonId)
-      .where("date", "==", targetDate)
-      .where("expires_at", ">", admin.firestore.Timestamp.now())
-      .get();
+    let lockedSlots = {};
+    try {
+      const lockedSnapshot = await db.collection("slot_locks")
+        .where("salon_id", "==", salonId)
+        .where("date", "==", targetDate)
+        .where("expires_at", ">", admin.firestore.Timestamp.now())
+        .get();
 
-    const lockedSlots = {};
-    lockedSnapshot.forEach(doc => {
-      const l = doc.data();
-      lockedSlots[l.slot_time] = (lockedSlots[l.slot_time] || 0) + 1;
-    });
+      lockedSnapshot.forEach(doc => {
+        const l = doc.data();
+        lockedSlots[l.slot_time] = (lockedSlots[l.slot_time] || 0) + 1;
+      });
+    } catch (lockError) {
+      console.log("Slot locks query failed (index may not exist):", lockError.message);
+    }
 
     // Generate slots
     const slots = [];
-    const [openH, openM] = openTime.split(":").map(Number);
-    const [closeH, closeM] = closeTime.split(":").map(Number);
+    const timeParts = openTime.split(":");
+    const closeTimeParts = closeTime.split(":");
+    const openH = parseInt(timeParts[0]) || 9;
+    const openM = parseInt(timeParts[1]) || 0;
+    const closeH = parseInt(closeTimeParts[0]) || 20;
+    const closeM = parseInt(closeTimeParts[1]) || 0;
     
     let currentMinutes = openH * 60 + openM;
     const closeMinutes = closeH * 60 + closeM;
@@ -765,10 +790,14 @@ async function handleGetSalonSlots(req, res, salonId) {
       currentMinutes += avgTime;
     }
 
-    return res.status(200).json(slots);
+    return res.status(200).json({
+      available_slots: slots,
+      date: targetDate,
+      salon_id: salonId
+    });
   } catch (error) {
     console.error("Get slots error:", error);
-    return res.status(200).json([]);
+    return res.status(200).json({ available_slots: [] });
   }
 }
 
@@ -1245,28 +1274,86 @@ async function handleGetUpcomingReminders(req, res, phone) {
 
 async function handleLockSlot(req, res) {
   try {
-    const { salon_id, date, slot_time, customer_phone } = req.body;
+    const { salon_id, date, slot_time, customer_phone, booking_date } = req.body;
+    const targetDate = date || booking_date; // Support both field names
+    
+    if (!salon_id || !targetDate || !slot_time) {
+      return res.status(400).json({ 
+        locked: false, 
+        message: "salon_id, date/booking_date, and slot_time are required" 
+      });
+    }
+    
+    // Check if slot is already booked
+    const salonDoc = await db.collection("salons").doc(salon_id).get();
+    const staffCount = salonDoc.exists ? safeNum(salonDoc.data().staff_count || salonDoc.data().staffCount, 1) : 1;
+    
+    // Count existing bookings
+    let existingBookingsCount = 0;
+    try {
+      const existingBookings = await db.collection("bookings")
+        .where("salon_id", "==", salon_id)
+        .where("booking_date", "==", targetDate)
+        .where("slot_time", "==", slot_time)
+        .where("status", "in", ["confirmed", "pending"])
+        .get();
+      existingBookingsCount = existingBookings.size;
+    } catch (e) {
+      console.log("Bookings query error:", e.message);
+    }
+    
+    // Count existing locks (simplified query to avoid index requirement)
+    let existingLocksCount = 0;
+    try {
+      const allLocks = await db.collection("slot_locks")
+        .where("salon_id", "==", salon_id)
+        .where("date", "==", targetDate)
+        .where("slot_time", "==", slot_time)
+        .get();
+      
+      const now = Date.now();
+      allLocks.forEach(doc => {
+        const lock = doc.data();
+        const expiresAt = lock.expires_at?.toDate?.() || new Date(0);
+        if (expiresAt.getTime() > now) {
+          existingLocksCount++;
+        }
+      });
+    } catch (e) {
+      console.log("Locks query error:", e.message);
+    }
+    
+    const totalOccupied = existingBookingsCount + existingLocksCount;
+    
+    if (totalOccupied >= staffCount) {
+      return res.status(200).json({
+        locked: false,
+        message: "Slot is no longer available"
+      });
+    }
+    
     const lockId = generateId();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lock
 
     await db.collection("slot_locks").doc(lockId).set({
       lock_id: lockId,
       salon_id,
-      date,
+      date: targetDate,
       slot_time,
-      customer_phone,
+      customer_phone: customer_phone || "",
       created_at: admin.firestore.Timestamp.now(),
       expires_at: admin.firestore.Timestamp.fromDate(expiresAt)
     });
 
     return res.status(200).json({
+      locked: true,
       message: "Slot locked for 5 minutes",
       lock_id: lockId,
       expires_at: expiresAt.toISOString()
     });
   } catch (error) {
     console.error("Lock slot error:", error);
-    return res.status(500).json({ error: "Failed to lock slot" });
+    return res.status(500).json({ locked: false, error: "Failed to lock slot", detail: error.message });
   }
 }
 

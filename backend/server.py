@@ -376,7 +376,11 @@ async def get_salon_slots(salon_id: str, date: str = None):
         
         current_minutes += avg_time
     
-    return slots
+    return {
+        "available_slots": slots,
+        "date": target_date,
+        "salon_id": salon_id
+    }
 
 @app.get("/api/salon/{salon_id}/reviews")
 async def get_salon_reviews(salon_id: str):
@@ -641,20 +645,51 @@ async def get_upcoming_reminders(phone: str):
 @app.post("/api/slot/lock")
 async def lock_slot(request: Request):
     data = await request.json()
+    salon_id = data.get("salon_id")
+    slot_time = data.get("slot_time")
+    target_date = data.get("date") or data.get("booking_date")  # Support both field names
+    customer_phone = data.get("customer_phone", "")
+    
+    if not salon_id or not target_date or not slot_time:
+        return {"locked": False, "message": "salon_id, date, and slot_time are required"}
+    
+    # Check if slot is already booked
+    salon = db.salons.find_one({"salon_id": salon_id})
+    staff_count = int(salon.get("staff_count", 1)) if salon else 1
+    
+    existing_bookings = db.bookings.count_documents({
+        "salon_id": salon_id,
+        "booking_date": target_date,
+        "slot_time": slot_time,
+        "status": {"$in": ["confirmed", "pending"]}
+    })
+    
+    existing_locks = db.slot_locks.count_documents({
+        "salon_id": salon_id,
+        "date": target_date,
+        "slot_time": slot_time,
+        "expires_at": {"$gt": datetime.now()}
+    })
+    
+    total_occupied = existing_bookings + existing_locks
+    
+    if total_occupied >= staff_count:
+        return {"locked": False, "message": "Slot is no longer available"}
+    
     lock_id = generate_id()
     expires = datetime.now() + timedelta(minutes=5)
     
     db.slot_locks.insert_one({
         "lock_id": lock_id,
-        "salon_id": data.get("salon_id"),
-        "date": data.get("date"),
-        "slot_time": data.get("slot_time"),
-        "customer_phone": data.get("customer_phone"),
+        "salon_id": salon_id,
+        "date": target_date,
+        "slot_time": slot_time,
+        "customer_phone": customer_phone,
         "created_at": datetime.now(),
         "expires_at": expires
     })
     
-    return {"message": "Slot locked for 5 minutes", "lock_id": lock_id, "expires_at": expires.isoformat()}
+    return {"locked": True, "message": "Slot locked for 5 minutes", "lock_id": lock_id, "expires_at": expires.isoformat()}
 
 # ==================== REVIEW ROUTES ====================
 @app.post("/api/review/create")

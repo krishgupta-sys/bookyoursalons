@@ -310,8 +310,18 @@ function CustomerHome() {
 
   const fetchSlots = async (salonId, date) => {
     try {
-      const response = await axios.get(`${API}/salon/${salonId}/slots`, { params: { date } });
-      const slots = Array.isArray(response.data?.available_slots) ? response.data.available_slots : [];
+      // Ensure date is in YYYY-MM-DD format
+      const formattedDate = date ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      const response = await axios.get(`${API}/salon/${salonId}/slots`, { params: { date: formattedDate } });
+      
+      // Handle both array and object response formats
+      let slots = [];
+      if (Array.isArray(response.data)) {
+        slots = response.data;
+      } else if (response.data?.available_slots) {
+        slots = Array.isArray(response.data.available_slots) ? response.data.available_slots : [];
+      }
+      
       setAvailableSlots(slots);
     } catch (error) {
       console.error('Error fetching slots:', error);
@@ -344,10 +354,12 @@ function CustomerHome() {
   };
 
   const handleDateChange = (date) => {
-    setSelectedDate(date);
+    // Ensure date is in YYYY-MM-DD format
+    const formattedDate = date ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    setSelectedDate(formattedDate);
     setSelectedSlot(''); // Reset slot selection on date change
     setCurrentLockId(null);
-    if (selectedSalon) fetchSlots(selectedSalon.salon_id, date);
+    if (selectedSalon) fetchSlots(selectedSalon.salon_id, formattedDate);
   };
 
   // Lock slot when selected to prevent double booking
@@ -355,12 +367,15 @@ function CustomerHome() {
     if (!selectedSalon || !selectedDate) return;
     
     const phone = localStorage.getItem('userPhone') || '';
+    // Ensure date is in YYYY-MM-DD format
+    const formattedDate = new Date(selectedDate).toISOString().split('T')[0];
     
     try {
       const response = await axios.post(`${API}/slot/lock`, {
         salon_id: selectedSalon.salon_id,
         slot_time: slot,
-        booking_date: selectedDate,
+        date: formattedDate,
+        booking_date: formattedDate,
         customer_phone: phone
       });
       
@@ -371,7 +386,7 @@ function CustomerHome() {
       } else {
         toast.error(response.data.message || 'Slot not available');
         // Refresh slots
-        fetchSlots(selectedSalon.salon_id, selectedDate);
+        fetchSlots(selectedSalon.salon_id, formattedDate);
       }
     } catch (error) {
       console.error('Slot lock error:', error);
